@@ -1,0 +1,440 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: #0f0f1a;
+  color: #e0e0e0;
+}
+
+.app { display: flex; height: 100vh; width: 100vw; }
+
+/* ── Sidebar ─────────────────────────────────────────────────────────────── */
+
+.sidebar {
+  width: 280px;
+  min-width: 280px;
+  background: #12122a;
+  border-right: 1px solid #2a2a4a;
+  display: flex;
+  flex-direction: column;
+  overflow-y: hidden;
+}
+
+.sidebar-header {
+  padding: 20px 16px 16px;
+  border-bottom: 1px solid #2a2a4a;
+}
+
+.sidebar-header h1 {
+  font-size: 18px;
+  font-weight: 700;
+  color: #00d4ff;
+  margin-bottom: 2px;
+}
+
+.subtitle {
+  font-size: 11px;
+  color: #6a6a8a;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+}
+
+.sidebar-section {
+  padding: 14px 16px;
+  border-bottom: 1px solid #1e1e3a;
+}
+
+.sidebar-section h2 {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6a6a8a;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 10px;
+}
+
+/* ── Upload ──────────────────────────────────────────────────────────────── */
+
+.upload-btn {
+  display: block;
+  width: 100%;
+  padding: 10px 14px;
+  background: #1a1a40;
+  border: 1px dashed #3a3a6a;
+  border-radius: 6px;
+  color: #a0a0c0;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.upload-btn:hover {
+  background: #222250;
+  border-color: #00d4ff;
+  color: #00d4ff;
+}
+
+/* ── Info rows ───────────────────────────────────────────────────────────── */
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.info-row span:first-child { color: #7a7a9a; }
+
+.info-row span:last-child {
+  color: #e0e0e0;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 12px;
+}
+
+/* ── Toggles ─────────────────────────────────────────────────────────────── */
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 13px;
+  color: #c0c0d0;
+  cursor: pointer;
+}
+
+.toggle-label input[type="checkbox"] {
+  accent-color: #00d4ff;
+  width: 15px;
+  height: 15px;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+
+.action-btn {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px 14px;
+  background: #1e1e4a;
+  border: 1px solid #3a3a6a;
+  border-radius: 6px;
+  color: #00d4ff;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.action-btn:hover { background: #2a2a5a; }
+
+.sim-btn {
+  display: block;
+  width: 100%;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, #4a1a00, #6a2a00);
+  border: 1px solid #ff8c00;
+  border-radius: 6px;
+  color: #ff8c00;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+}
+
+.sim-btn:hover {
+  background: linear-gradient(135deg, #5a2a00, #8a3a00);
+  transform: scale(1.02);
+}
+
+.sim-btn.stop {
+  background: linear-gradient(135deg, #3a0a0a, #5a1a1a);
+  border-color: #ff4444;
+  color: #ff4444;
+}
+
+.sim-btn.stop:hover {
+  background: linear-gradient(135deg, #4a1515, #6a2020);
+}
+
+/* ── Speed controls ──────────────────────────────────────────────────────── */
+
+.speed-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.speed-label {
+  font-size: 12px;
+  color: #6a6a8a;
+  margin-right: 2px;
+}
+
+.speed-btn {
+  padding: 4px 10px;
+  background: #1a1a3a;
+  border: 1px solid #2a2a4a;
+  border-radius: 4px;
+  color: #8a8aaa;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.speed-btn:hover {
+  border-color: #ff8c00;
+  color: #ff8c00;
+}
+
+.speed-btn.active {
+  background: #3a1a00;
+  border-color: #ff8c00;
+  color: #ff8c00;
+  font-weight: 600;
+}
+
+/* ── Kerf control ────────────────────────────────────────────────────────── */
+
+.kerf-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.kerf-slider {
+  flex: 1;
+  accent-color: #ff8c00;
+  height: 4px;
+  cursor: pointer;
+}
+
+.kerf-value {
+  font-size: 11px;
+  color: #ff8c00;
+  font-family: 'Consolas', monospace;
+  min-width: 32px;
+  text-align: right;
+}
+
+/* ── Plasma Checks ───────────────────────────────────────────────────────── */
+
+.check-ok {
+  color: #00ff88;
+  font-size: 13px;
+  padding: 4px 0;
+}
+
+.issues-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.issue-row {
+  font-size: 12px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  line-height: 1.3;
+}
+
+.issue-row.error {
+  background: rgba(255, 60, 60, 0.12);
+  color: #ff6b6b;
+  border-left: 3px solid #ff3c3c;
+}
+
+.issue-row.warning {
+  background: rgba(255, 200, 0, 0.1);
+  color: #ffc800;
+  border-left: 3px solid #ffc800;
+}
+
+.loop-info {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #1e1e3a;
+}
+
+.export-btn {
+  margin-top: 10px;
+  background: #0a2a1a !important;
+  border-color: #00cc66 !important;
+  color: #00cc66 !important;
+}
+
+.export-btn:hover {
+  background: #0f3a22 !important;
+}
+
+.export-note {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+/* ── Error ───────────────────────────────────────────────────────────────── */
+
+.error-msg {
+  padding: 10px 16px;
+  background: #2a1020;
+  color: #ff6b6b;
+  font-size: 12px;
+  border-bottom: 1px solid #3a1a2a;
+}
+
+/* ── Sidebar footer ──────────────────────────────────────────────────────── */
+
+.sidebar-footer {
+  margin-top: auto;
+  padding: 12px 16px;
+  border-top: 1px solid #1e1e3a;
+  text-align: center;
+}
+
+.sidebar-footer small {
+  color: #4a4a6a;
+  font-size: 11px;
+}
+
+/* ── Viewport ────────────────────────────────────────────────────────────── */
+
+.viewport {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: #1a1a2e;
+}
+
+.viewport canvas {
+  display: block;
+  cursor: grab;
+  touch-action: none;
+}
+
+.viewport canvas:active { cursor: grabbing; }
+
+/* ── Drop overlay ────────────────────────────────────────────────────────── */
+
+.drop-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.drop-text { text-align: center; color: #4a4a6a; }
+.drop-icon { font-size: 48px; display: block; margin-bottom: 12px; }
+.drop-text p { font-size: 16px; margin: 4px 0; }
+.drop-sub { font-size: 12px !important; color: #3a3a5a !important; }
+
+/* ── Ad slots ────────────────────────────────────────────────────────────── */
+
+.ad-slot {
+  padding: 0;
+  overflow: hidden;
+  text-align: center;
+}
+
+.ad-sidebar {
+  border-bottom: 1px solid #1e1e3a;
+  min-height: 90px;
+  background: #0f0f1a;
+}
+
+.ad-bottom {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  min-height: 50px;
+  background: rgba(15, 15, 26, 0.9);
+  z-index: 10;
+  border-top: 1px solid #2a2a4a;
+}
+
+/* ── SEO content (visible pre-load, crawlable) ───────────────────────────── */
+
+.seo-content {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.seo-content h2 {
+  font-size: 18px;
+  color: #4a4a6a;
+  margin-bottom: 8px;
+}
+
+.seo-content h3 {
+  font-size: 14px;
+  color: #4a4a6a;
+  margin: 10px 0 6px;
+}
+
+.seo-content ul {
+  list-style: none;
+  padding: 0;
+}
+
+.seo-content li::before {
+  content: "✓ ";
+  color: #00d4ff33;
+}
+
+/* ── Responsive: smaller screens ─────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  .sidebar {
+    width: 220px;
+    min-width: 220px;
+  }
+  .sidebar-header { padding: 14px 12px 12px; }
+  .sidebar-section { padding: 10px 12px; }
+  .sidebar-header h1 { font-size: 16px; }
+}
+
+@media (max-height: 820px) {
+  .sidebar-header { padding: 10px 16px 8px; }
+  .sidebar-header h1 { font-size: 16px; }
+  .subtitle { font-size: 10px; }
+  .sidebar-section { padding: 8px 16px; }
+  .sidebar-section h2 { margin-bottom: 5px; font-size: 10px; }
+  .info-row { padding: 2px 0; font-size: 12px; }
+  .upload-btn { padding: 7px 12px; font-size: 12px; }
+  .sim-btn { padding: 7px 12px; font-size: 13px; }
+  .action-btn { padding: 6px 12px; margin-top: 6px; font-size: 12px; }
+  .speed-control { margin-top: 6px; }
+  .kerf-control { margin-top: 6px; }
+  .toggle-label { padding: 3px 0; font-size: 12px; }
+  .sidebar-footer { padding: 6px 16px; }
+  .sidebar-footer small { font-size: 10px; }
+  .ad-sidebar { min-height: 50px; }
+}
+
+@media (max-width: 640px) {
+  .app { flex-direction: column; }
+  .sidebar {
+    width: 100%;
+    min-width: 100%;
+    max-height: 45vh;
+    border-right: none;
+    border-bottom: 1px solid #2a2a4a;
+    overflow-y: auto;
+  }
+  .viewport { min-height: 55vh; }
+}

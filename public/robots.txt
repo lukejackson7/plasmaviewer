@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://plasmaviewer.com/sitemap.xml

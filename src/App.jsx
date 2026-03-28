@@ -11,9 +11,11 @@ import {
   getSubPath,
   isRapidAt,
 } from './dxfHelpers.js';
-import { renderScene, fitToScreen } from './canvasRenderer.js';
+import { renderScene, renderLiftedPiece, fitToScreen } from './canvasRenderer.js';
 import { runPlasmaChecks } from './plasmaChecks.js';
 import { exportCleanedDxf } from './dxfExporter.js';
+
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
 export default function App() {
   // ── State ──────────────────────────────────────────────────────────────────
@@ -36,22 +38,29 @@ export default function App() {
   const [simActive, setSimActive] = useState(false);
   const [simSpeed, setSimSpeed] = useState(1); // 1x, 2x, 5x, 10x
   const [kerf, setKerf] = useState(2);
+  const [simHud, setSimHud] = useState(null); // { label, color, progress }
+  const [liftZ, setLiftZ] = useState(0); // CSS translateZ for lifted piece
 
   const canvasRef = useRef(null);
+  const liftCanvasRef = useRef(null);
   const containerRef = useRef(null);
+  const barRef = useRef(null);
   const nodesRef = useRef([]);
   const startPointRef = useRef(null);
   const geometryRef = useRef([]);
   const transformRef = useRef(transform);
   const rafRef = useRef(null);
   const isPanning = useRef(false);
+  const isTilting = useRef(false);
   const lastMouse = useRef({ x: 0, y: 0 });
+  const [tilt, setTilt] = useState({ rotX: 0, rotY: 0 });
 
   // Simulation refs
   const simPathRef = useRef(null);
   const simDistRef = useRef(0);          // current distance along path
   const simActiveRef = useRef(false);
   const simSpeedRef = useRef(1);
+  const tiltRef = useRef({ rotX: 0, rotY: 0 });
   const lastFrameTimeRef = useRef(0);
   const raisePhaseRef = useRef(false);
   const raiseStartRef = useRef(0);
@@ -191,7 +200,62 @@ export default function App() {
       showLoops,
       loops,
       bbox,
+      tilt: tiltRef.current,
     });
+
+    // Sync both canvas CSS transforms in the same frame to prevent jitter
+    const t = tiltRef.current;
+    const baseTransform = `rotateX(${t.rotX}deg) rotateY(${t.rotY}deg)`;
+    canvas.style.transform = baseTransform;
+
+    // Render lifted piece on overlay canvas with real CSS 3D
+    const liftCanvas = liftCanvasRef.current;
+    if (liftCanvas) {
+      // Keep lift canvas sized to match main canvas
+      if (liftCanvas.width !== w || liftCanvas.height !== h) {
+        liftCanvas.width = w;
+        liftCanvas.height = h;
+      }
+      const liftCtx = liftCanvas.getContext('2d');
+      if (simState?.raiseProgress > 0) {
+        const rp = simState.raiseProgress;
+        const maxZ = 120; // max CSS translateZ in px
+        const newZ = easeOutCubic(rp) * maxZ;
+        liftCanvas.style.transform = `${baseTransform} translateZ(${newZ}px)`;
+        renderLiftedPiece(liftCtx, w / dpr, h / dpr, geometryRef.current, transformRef.current, {
+          raiseProgress: rp,
+          kerf: kerfRef.current,
+          bbox,
+        });
+      } else {
+        liftCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        liftCtx.clearRect(0, 0, w / dpr, h / dpr);
+        liftCanvas.style.transform = `${baseTransform} translateZ(0px)`;
+      }
+    }
+
+    // Update HUD overlay state
+    if (simState?.active && simState.progress != null) {
+      const pct = Math.round(simState.progress * 100);
+      const issueCount = issues?.length || 0;
+      let label, color;
+      if (simState.raiseProgress >= 1) {
+        label = issueCount === 0 ? '✓ Success' : `⚠ ${issueCount} Issue${issueCount > 1 ? 's' : ''} Found`;
+        color = issueCount === 0 ? '#00ff88' : '#ffcc00';
+      } else if (simState.raiseProgress > 0) {
+        label = 'Lifting...'; color = '#ff8c00';
+      } else {
+        label = `Cutting: ${pct}%`; color = '#ff8c00';
+      }
+      setSimHud({ label, color, progress: simState.progress });
+      // Directly update bar DOM to bypass React batching lag
+      if (barRef.current) {
+        barRef.current.style.width = `${simState.progress * 100}%`;
+        barRef.current.style.backgroundColor = color;
+      }
+    } else {
+      setSimHud(null);
+    }
 
     rafRef.current = requestAnimationFrame(renderLoop);
   }, [showNodes, showStartPoint, showIssues, issues, showLoops, loops]);
@@ -282,14 +346,46 @@ export default function App() {
   // ── Mouse handlers ────────────────────────────────────────────────────────
 
   const onMouseDown = useCallback((e) => {
-    if (e.button === 0 || e.button === 1) {
+    if (e.button === 0) {
       isPanning.current = true;
       lastMouse.current = { x: e.clientX, y: e.clientY };
+      e.preventDefault();
+    } else if (e.button === 1) {
+      if (e.detail === 2) {
+        tiltRef.current = { rotX: 0, rotY: 0 };
+        if (canvasRef.current) canvasRef.current.style.transform = 'rotateX(0deg) rotateY(0deg)';
+        if (liftCanvasRef.current) liftCanvasRef.current.style.transform = 'rotateX(0deg) rotateY(0deg) translateZ(0px)';
+      } else {
+        isTilting.current = true;
+        lastMouse.current = { x: e.clientX, y: e.clientY };
+      }
       e.preventDefault();
     }
   }, []);
 
   const onMouseMove = useCallback((e) => {
+    if (isTilting.current) {
+      const dx = e.clientX - lastMouse.current.x;
+      const dy = e.clientY - lastMouse.current.y;
+      lastMouse.current = { x: e.clientX, y: e.clientY };
+      const prev = tiltRef.current;
+      const next = {
+        rotX: Math.max(-60, Math.min(60, prev.rotX - dy * 0.3)),
+        rotY: Math.max(-60, Math.min(60, prev.rotY + dx * 0.3)),
+      };
+      tiltRef.current = next;
+      // Update canvases immediately — no React state involved
+      const baseTransform = `rotateX(${next.rotX}deg) rotateY(${next.rotY}deg)`;
+      if (canvasRef.current) canvasRef.current.style.transform = baseTransform;
+      if (liftCanvasRef.current) {
+        // Preserve existing translateZ
+        const cur = liftCanvasRef.current.style.transform;
+        const zMatch = cur.match(/translateZ\([^)]+\)/);
+        const zPart = zMatch ? ` ${zMatch[0]}` : ' translateZ(0px)';
+        liftCanvasRef.current.style.transform = baseTransform + zPart;
+      }
+      return;
+    }
     if (!isPanning.current) return;
     const dx = e.clientX - lastMouse.current.x;
     const dy = e.clientY - lastMouse.current.y;
@@ -301,7 +397,7 @@ export default function App() {
     });
   }, []);
 
-  const onMouseUp = useCallback(() => { isPanning.current = false; }, []);
+  const onMouseUp = useCallback(() => { isPanning.current = false; isTilting.current = false; }, []);
 
   // ── Touch handlers (trackpad/mobile) ──────────────────────────────────────
 
@@ -398,6 +494,10 @@ export default function App() {
     const t = fitToScreen(bbox, canvas.width / dpr, canvas.height / dpr);
     setTransform(t);
     transformRef.current = t;
+    // Reset orbit
+    tiltRef.current = { rotX: 0, rotY: 0 };
+    if (canvasRef.current) canvasRef.current.style.transform = 'rotateX(0deg) rotateY(0deg)';
+    if (liftCanvasRef.current) liftCanvasRef.current.style.transform = 'rotateX(0deg) rotateY(0deg) translateZ(0px)';
   }, [bbox]);
 
   // ── Drag and drop ─────────────────────────────────────────────────────────
@@ -536,17 +636,18 @@ export default function App() {
                   ⏹ Stop
                 </button>
               )}
-              <div className="speed-control">
+              <div className="kerf-control">
                 <span className="speed-label">Speed:</span>
-                {[1, 2, 5, 10].map((s) => (
-                  <button
-                    key={s}
-                    className={`speed-btn ${simSpeed === s ? 'active' : ''}`}
-                    onClick={() => { setSimSpeed(s); simSpeedRef.current = s; }}
-                  >
-                    {s}x
-                  </button>
-                ))}
+                <input
+                  type="range"
+                  min="0.5"
+                  max="20"
+                  step="0.5"
+                  value={simSpeed}
+                  onChange={(e) => { const v = parseFloat(e.target.value); setSimSpeed(v); simSpeedRef.current = v; }}
+                  className="kerf-slider"
+                />
+                <span className="kerf-value">{simSpeed}x</span>
               </div>
               <div className="kerf-control">
                 <span className="speed-label">Kerf:</span>
@@ -566,7 +667,7 @@ export default function App() {
         )}
 
         <div className="sidebar-footer">
-          <small>Scroll to zoom · Drag to pan</small>
+          <small>Scroll to zoom · Drag to pan · Middle-click to orbit</small>
         </div>
       </aside>
 
@@ -575,9 +676,11 @@ export default function App() {
         ref={containerRef}
         onDragOver={onDragOver}
         onDrop={onDrop}
+        style={{ perspective: '1200px' }}
       >
         <canvas
           ref={canvasRef}
+          style={{ transformStyle: 'preserve-3d' }}
           onMouseDown={onMouseDown}
           onMouseMove={onMouseMove}
           onMouseUp={onMouseUp}
@@ -586,7 +689,21 @@ export default function App() {
           onTouchMove={onTouchMove}
           onTouchEnd={onTouchEnd}
           onWheel={onWheel}
+          onContextMenu={(e) => e.preventDefault()}
         />
+        <canvas
+          ref={liftCanvasRef}
+          className="lift-canvas"
+          style={{ transformStyle: 'preserve-3d' }}
+        />
+        {simHud && (
+          <div className="sim-hud">
+            <span className="sim-hud-label" style={{ color: simHud.color }}>{simHud.label}</span>
+            <div className="sim-hud-bar-bg">
+              <div className="sim-hud-bar" ref={barRef} style={{ width: `${simHud.progress * 100}%`, backgroundColor: simHud.color }} />
+            </div>
+          </div>
+        )}
         {!fileName && (
           <div className="drop-overlay">
             <div className="drop-text">

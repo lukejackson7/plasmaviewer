@@ -23,12 +23,21 @@ function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 export function renderScene(ctx, width, height, geometry, transform, options = {}) {
   const { panX, panY, zoom } = transform;
   const dpr = window.devicePixelRatio || 1;
+  const tilt = options.tilt || { rotX: 0, rotY: 0 };
+
+  // Compute depth offset from tilt angles for 3D side faces
+  // When tilted, side faces become visible on the edges facing away from viewpoint
+  const tiltRadX = (tilt.rotX * Math.PI) / 180;
+  const tiltRadY = (tilt.rotY * Math.PI) / 180;
+  // depthDx/depthDy = direction to shift "bottom" face relative to "top" face
+  const depthDx = Math.sin(tiltRadY) * 0.5;
+  const depthDy = -Math.sin(tiltRadX) * 0.5;
+  // Ensure some minimum visible thickness even with no tilt (slight downward offset)
+  const baseDy = 0.15;
 
   // Clear to dark table surface
-  ctx.fillStyle = '#0d0d18';
-  ctx.fillRect(0, 0, width, height);
-
-  drawGrid(ctx, width, height, transform);
+  // Clear canvas — transparent so CSS grid background shows through
+  ctx.clearRect(0, 0, width, height);
 
   // ── Draw sheet metal plate ──────────────────────────────────────────────────
   const isRaisePhase = options.simState?.raiseProgress > 0;
@@ -39,11 +48,22 @@ export function renderScene(ctx, width, height, geometry, transform, options = {
   if (isRaisePhase && sheetAlpha > 0) {
     const rp = options.simState.raiseProgress;
     const lift = options.simState.liftAmount * easeOutCubic(rp);
+    const shadowSpread = 1 + rp * 0.06; // shadow grows as piece lifts
+    const shadowOffX = lift * 0.2;
+    const shadowOffY = lift * 0.15;
     ctx.save();
     ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom, dpr * panX * zoom, dpr * panY * zoom);
-    ctx.translate(lift * 0.15, lift * 0.1);
-    ctx.globalAlpha = 0.35 * Math.min(1, rp * 2) * sheetAlpha;
+    // Scale shadow outward from geometry center to simulate height
+    const bb = options.bbox;
+    const cx = (bb.minX + bb.maxX) / 2;
+    const cy = -(bb.minY + bb.maxY) / 2;
+    ctx.translate(cx + shadowOffX, cy + shadowOffY);
+    ctx.scale(shadowSpread, shadowSpread);
+    ctx.translate(-cx, -cy);
+    ctx.globalAlpha = (0.5 - rp * 0.15) * sheetAlpha;
+    ctx.filter = `blur(${Math.round(4 + rp * 8)}px)`;
     drawFilledGeometry(ctx, geometry, options.bbox, '#000000');
+    ctx.filter = 'none';
     ctx.restore();
   }
 
@@ -64,33 +84,12 @@ export function renderScene(ctx, width, height, geometry, transform, options = {
   ctx.lineJoin = 'round';
 
   // ── Raise phase: parts lifting after cut ──────────────────────────────────
+  // Lifted piece is rendered on a separate overlay canvas (with CSS translateZ)
+  // Here we only draw the remaining sheet stuff
 
   if (options.simState?.raiseProgress > 0) {
-    const rp = options.simState.raiseProgress;
-    const lift = options.simState.liftAmount * easeOutCubic(rp);
-    const bb = options.bbox;
-
-    // Raised solid metal piece
-    ctx.save();
-    ctx.translate(0, -lift);
-    drawFilledGeometry(ctx, geometry, bb, '#484858');
-
-    // Cut edge highlight
-    ctx.strokeStyle = '#6a6a78';
-    ctx.lineWidth = (kerf * 0.5) / zoom;
-    for (const g of geometry) drawEntity(ctx, g);
-
-    // Hot edge glow fading with progress
-    const edgeGlow = Math.max(0, 1 - rp * 0.7);
-    if (edgeGlow > 0) {
-      ctx.strokeStyle = `rgba(255, 140, 0, ${edgeGlow * 0.5})`;
-      ctx.lineWidth = (kerf + 1) / zoom;
-      ctx.shadowColor = `rgba(255, 100, 0, ${edgeGlow * 0.3})`;
-      ctx.shadowBlur = 6 / zoom;
-      for (const g of geometry) drawEntity(ctx, g);
-      ctx.shadowBlur = 0;
-    }
-    ctx.restore();
+    // Nothing to draw on main canvas for the piece — it's on the overlay
+    // Just skip to avoid drawing the cut outlines on the sheet
 
   // ── Simulation overlay (cutting phase) ────────────────────────────────────
 
@@ -210,40 +209,6 @@ export function renderScene(ctx, width, height, geometry, transform, options = {
   }
 
   ctx.restore();
-
-  // ── Simulation HUD (screen-space) ─────────────────────────────────────────
-
-  if (options.simState?.active && options.simState.progress != null) {
-    const pct = Math.round(options.simState.progress * 100);
-    let label, hudColor;
-    if (options.simState.raiseProgress >= 1) {
-      const issueCount = options.issues?.length || 0;
-      if (issueCount === 0) {
-        label = '✓ Success';
-        hudColor = '#00ff88';
-      } else {
-        label = `⚠ ${issueCount} Issue${issueCount > 1 ? 's' : ''} Found`;
-        hudColor = '#ffcc00';
-      }
-    } else if (options.simState.raiseProgress > 0) {
-      label = 'Lifting...';
-      hudColor = '#ff8c00';
-    } else {
-      label = `Cutting: ${pct}%`;
-      hudColor = '#ff8c00';
-    }
-    const boxW = Math.max(170, ctx.measureText(label).width + 30);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-    ctx.fillRect(width - boxW - 10, 10, boxW, 36);
-    ctx.fillStyle = hudColor;
-    ctx.font = '14px monospace';
-    ctx.fillText(label, width - boxW, 33);
-    // Progress bar
-    ctx.fillStyle = '#333';
-    ctx.fillRect(width - boxW, 38, boxW - 20, 4);
-    ctx.fillStyle = hudColor;
-    ctx.fillRect(width - boxW, 38, (boxW - 20) * options.simState.progress, 4);
-  }
 }
 
 // ─── Draw direction arrow ───────────────────────────────────────────────────────
@@ -563,7 +528,7 @@ function drawSheetMetal(ctx, width, height, transform, bbox, cutGeometry, kerf) 
     off.restore();
   }
 
-  // Beveled edges
+  // Beveled edges (top face)
   const bevel = Math.min(3, w * 0.01);
   off.strokeStyle = 'rgba(255, 255, 255, 0.12)';
   off.lineWidth = bevel;
@@ -576,6 +541,23 @@ function drawSheetMetal(ctx, width, height, transform, bbox, cutGeometry, kerf) 
   off.stroke();
 
   // Paste offscreen sheet onto main canvas
+  // First draw stacked dark offset copies BEHIND the plate for visible edge thickness
+  const edgeLayers = 8;
+  const edgeThick = Math.max(6, Math.min(12, w * 0.015));
+  for (let i = edgeLayers; i >= 1; i--) {
+    const t = i / edgeLayers;
+    const offX = t * edgeThick * 0.3;
+    const offY = t * edgeThick;
+    const shade = Math.round(10 + (1 - t) * 20);
+    ctx.fillStyle = `rgb(${shade}, ${shade}, ${shade + 5})`;
+    ctx.fillRect(left + offX, top + offY, w, h);
+  }
+  // Dark outline on the bottom edge copy
+  ctx.strokeStyle = '#08080f';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(left + edgeThick * 0.3, top + edgeThick, w, h);
+
+  // Now paste the plate surface on top
   ctx.drawImage(offCanvas, 0, 0, offCanvas.width, offCanvas.height, 0, 0, width, height);
 }
 
@@ -610,6 +592,84 @@ function drawGrid(ctx, width, height, { panX, panY, zoom }) {
     ctx.moveTo(0, sy); ctx.lineTo(width, sy);
   }
   ctx.stroke();
+}
+
+// ─── Lifted piece renderer (drawn on overlay canvas with CSS translateZ) ────
+
+/**
+ * Render the lifted cut piece onto a separate canvas.
+ * This canvas will have CSS translateZ applied for real 3D depth separation.
+ */
+export function renderLiftedPiece(ctx, width, height, geometry, transform, options = {}) {
+  const { panX, panY, zoom } = transform;
+  const dpr = window.devicePixelRatio || 1;
+  const kerf = options.kerf || 2;
+  const rp = options.raiseProgress || 0;
+  const bb = options.bbox;
+  if (!bb || rp <= 0) return;
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+
+  ctx.save();
+  ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom, dpr * panX * zoom, dpr * panY * zoom);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // ── 3D thickness via stacked offset layers ──
+  // Draw dark copies offset downward, creating a visible edge from every angle
+  const edgeThick = 6 / zoom; // thickness in world units (~6 screen px)
+  const layers = 8;
+  for (let i = layers; i >= 1; i--) {
+    const t = i / layers;
+    const offY = t * edgeThick;
+    const offX = t * edgeThick * 0.3;
+    // Gradient from very dark (bottom) to medium dark (near top)
+    const shade = Math.round(18 + (1 - t) * 28);
+    ctx.save();
+    ctx.translate(offX, offY);
+    drawFilledGeometry(ctx, geometry, bb, `rgb(${shade}, ${shade}, ${shade + 6})`);
+    ctx.restore();
+  }
+
+  // Dark edge outline around the offset layers for definition
+  ctx.save();
+  ctx.translate(edgeThick * 0.3, edgeThick);
+  ctx.strokeStyle = '#111118';
+  ctx.lineWidth = 1.5 / zoom;
+  for (const g of geometry) drawEntity(ctx, g);
+  ctx.restore();
+
+  // ── Top face — metal surface ──
+  const topGrad = ctx.createLinearGradient(bb.minX, -bb.maxY, bb.maxX, -bb.minY);
+  topGrad.addColorStop(0, '#525262');
+  topGrad.addColorStop(0.3, '#484858');
+  topGrad.addColorStop(0.7, '#4e4e5e');
+  topGrad.addColorStop(1, '#444454');
+  drawFilledGeometry(ctx, geometry, bb, topGrad);
+
+  // Top edge highlight (lit from above-left)
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+  ctx.lineWidth = 1.5 / zoom;
+  for (const g of geometry) drawEntity(ctx, g);
+
+  // Cut edge highlight
+  ctx.strokeStyle = '#6a6a78';
+  ctx.lineWidth = (kerf * 0.5) / zoom;
+  for (const g of geometry) drawEntity(ctx, g);
+
+  // Hot edge glow fading with progress
+  const edgeGlow = Math.max(0, 1 - rp * 0.7);
+  if (edgeGlow > 0) {
+    ctx.strokeStyle = `rgba(255, 140, 0, ${edgeGlow * 0.5})`;
+    ctx.lineWidth = (kerf + 1) / zoom;
+    ctx.shadowColor = `rgba(255, 100, 0, ${edgeGlow * 0.3})`;
+    ctx.shadowBlur = 6 / zoom;
+    for (const g of geometry) drawEntity(ctx, g);
+    ctx.shadowBlur = 0;
+  }
+
+  ctx.restore();
 }
 
 // ─── Fit to screen ──────────────────────────────────────────────────────────────

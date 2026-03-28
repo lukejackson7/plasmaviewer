@@ -308,13 +308,63 @@ html, body, #root {
   flex: 1;
   position: relative;
   overflow: hidden;
-  background: #1a1a2e;
+  background:
+    linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px),
+    #0d0d18;
+  background-size: 40px 40px;
 }
 
 .viewport canvas {
   display: block;
   cursor: grab;
   touch-action: none;
+}
+
+.lift-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* ── Simulation HUD (fixed overlay) ──────────────────────────────────────── */
+
+.sim-hud {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(6px);
+  border-radius: 8px;
+  padding: 10px 16px;
+  min-width: 170px;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.sim-hud-label {
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 14px;
+  font-weight: 600;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.sim-hud-bar-bg {
+  height: 4px;
+  background: #333;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.sim-hud-bar {
+  height: 100%;
+  width: 0;
+  border-radius: 2px;
+  transition: width 0.1s linear;
 }
 
 .viewport canvas:active { cursor: grabbing; }

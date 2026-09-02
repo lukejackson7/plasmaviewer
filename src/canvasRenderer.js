@@ -11,6 +11,22 @@ import { bulgeToArc } from './dxfHelpers.js';
 function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
 /**
+ * Convert the current orbit tilt into a 2D screen-space direction that the
+ * material's side wall (its "thickness") should extrude toward. Keeps a small
+ * downward bias at zero tilt (plate resting flat, lit from above) and follows
+ * the orbit as the user rotates the view, so the thickness illusion tracks
+ * the 3D manipulation instead of always pointing the same way.
+ */
+function tiltToDepthOffset(tilt) {
+  const tiltRadX = ((tilt?.rotX || 0) * Math.PI) / 180;
+  const tiltRadY = ((tilt?.rotY || 0) * Math.PI) / 180;
+  const depthDx = Math.sin(tiltRadY) * 0.5;
+  const depthDy = -Math.sin(tiltRadX) * 0.5;
+  const baseDy = 0.15;
+  return { depthDx, depthDy, baseDy };
+}
+
+/**
  * Render the full scene.
  * @param {CanvasRenderingContext2D} ctx
  * @param {number} width  - canvas CSS width
@@ -24,16 +40,11 @@ export function renderScene(ctx, width, height, geometry, transform, options = {
   const { panX, panY, zoom } = transform;
   const dpr = window.devicePixelRatio || 1;
   const tilt = options.tilt || { rotX: 0, rotY: 0 };
+  const thickness = options.thickness || 10;
 
   // Compute depth offset from tilt angles for 3D side faces
   // When tilted, side faces become visible on the edges facing away from viewpoint
-  const tiltRadX = (tilt.rotX * Math.PI) / 180;
-  const tiltRadY = (tilt.rotY * Math.PI) / 180;
-  // depthDx/depthDy = direction to shift "bottom" face relative to "top" face
-  const depthDx = Math.sin(tiltRadY) * 0.5;
-  const depthDy = -Math.sin(tiltRadX) * 0.5;
-  // Ensure some minimum visible thickness even with no tilt (slight downward offset)
-  const baseDy = 0.15;
+  const { depthDx, depthDy, baseDy } = tiltToDepthOffset(tilt);
 
   // Clear to dark table surface
   // Clear canvas — transparent so CSS grid background shows through
@@ -70,7 +81,7 @@ export function renderScene(ctx, width, height, geometry, transform, options = {
   if (sheetAlpha > 0) {
     ctx.save();
     ctx.globalAlpha = sheetAlpha;
-    drawSheetMetal(ctx, width, height, transform, options.bbox, isRaisePhase ? geometry : null, options.kerf || 2);
+    drawSheetMetal(ctx, width, height, transform, options.bbox, isRaisePhase ? geometry : null, options.kerf || 2, thickness, depthDx, depthDy, baseDy);
     ctx.restore();
   }
 
@@ -452,7 +463,7 @@ function drawFilledGeometry(ctx, geometry, bbox, fillStyle) {
 
 // ─── Sheet metal plate ──────────────────────────────────────────────────────────
 
-function drawSheetMetal(ctx, width, height, transform, bbox, cutGeometry, kerf) {
+function drawSheetMetal(ctx, width, height, transform, bbox, cutGeometry, kerf, thickness = 10, depthDx = 0, depthDy = 0, baseDy = 0.15) {
   if (!bbox) return;
   const { panX, panY, zoom } = transform;
   const pad = Math.max(bbox.width, bbox.height) * 0.25;
@@ -556,13 +567,17 @@ function drawSheetMetal(ctx, width, height, transform, bbox, cutGeometry, kerf) 
   off.stroke();
 
   // Paste offscreen sheet onto main canvas
-  // First draw stacked dark offset copies BEHIND the plate for visible edge thickness
-  const edgeLayers = 8;
-  const edgeThick = Math.max(6, Math.min(12, w * 0.015));
+  // First draw stacked dark offset copies BEHIND the plate for visible edge thickness.
+  // The base material's thickness — its side wall — extrudes in the direction the
+  // orbit tilt implies (falls back to a slight downward bias when untilted).
+  const edgeLayers = 10;
+  const edgeThick = Math.max(4, thickness);
+  const dirX = depthDx * 2;
+  const dirY = baseDy + depthDy * 2;
   for (let i = edgeLayers; i >= 1; i--) {
     const t = i / edgeLayers;
-    const offX = t * edgeThick * 0.3;
-    const offY = t * edgeThick;
+    const offX = t * edgeThick * dirX;
+    const offY = t * edgeThick * dirY;
     const shade = Math.round(10 + (1 - t) * 20);
     ctx.fillStyle = `rgb(${shade}, ${shade}, ${shade + 5})`;
     ctx.fillRect(left + offX, top + offY, w, h);
@@ -570,7 +585,7 @@ function drawSheetMetal(ctx, width, height, transform, bbox, cutGeometry, kerf) 
   // Dark outline on the bottom edge copy
   ctx.strokeStyle = '#08080f';
   ctx.lineWidth = 1;
-  ctx.strokeRect(left + edgeThick * 0.3, top + edgeThick, w, h);
+  ctx.strokeRect(left + edgeThick * dirX, top + edgeThick * dirY, w, h);
 
   // Now paste the plate surface on top
   ctx.drawImage(offCanvas, 0, 0, offCanvas.width, offCanvas.height, 0, 0, width, height);
@@ -622,6 +637,8 @@ export function renderLiftedPiece(ctx, width, height, geometry, transform, optio
   const rp = options.raiseProgress || 0;
   const bb = options.bbox;
   if (!bb || rp <= 0) return;
+  const thickness = options.thickness || 10;
+  const { depthDx, depthDy, baseDy } = tiltToDepthOffset(options.tilt);
 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, width, height);
@@ -632,13 +649,16 @@ export function renderLiftedPiece(ctx, width, height, geometry, transform, optio
   ctx.lineJoin = 'round';
 
   // ── 3D thickness via stacked offset layers ──
-  // Draw dark copies offset downward, creating a visible edge from every angle
-  const edgeThick = 6 / zoom; // thickness in world units (~6 screen px)
-  const layers = 8;
+  // The cut part's thickness extrudes the same direction as the base material's,
+  // so it visually matches the sheet it was cut from as the view is orbited.
+  const edgeThick = thickness / zoom; // thickness in world units (reads as `thickness` screen px)
+  const layers = 10;
+  const dirX = depthDx * 2;
+  const dirY = baseDy + depthDy * 2;
   for (let i = layers; i >= 1; i--) {
     const t = i / layers;
-    const offY = t * edgeThick;
-    const offX = t * edgeThick * 0.3;
+    const offY = t * edgeThick * dirY;
+    const offX = t * edgeThick * dirX;
     // Gradient from very dark (bottom) to medium dark (near top)
     const shade = Math.round(18 + (1 - t) * 28);
     ctx.save();
@@ -649,7 +669,7 @@ export function renderLiftedPiece(ctx, width, height, geometry, transform, optio
 
   // Dark edge outline around the offset layers for definition
   ctx.save();
-  ctx.translate(edgeThick * 0.3, edgeThick);
+  ctx.translate(edgeThick * dirX, edgeThick * dirY);
   ctx.strokeStyle = '#111118';
   ctx.lineWidth = 1.5 / zoom;
   for (const g of geometry) drawEntity(ctx, g);

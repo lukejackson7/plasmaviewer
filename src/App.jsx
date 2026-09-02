@@ -42,6 +42,7 @@ export default function App() {
   const [simActive, setSimActive] = useState(false);
   const [simSpeed, setSimSpeed] = useState(1); // 1x, 2x, 5x, 10x
   const [kerf, setKerf] = useState(2);
+  const [thickness, setThickness] = useState(10); // material/part thickness (screen px, drives 3D side-wall depth)
   const [simHud, setSimHud] = useState(null); // { label, color, progress }
   const [liftZ, setLiftZ] = useState(0); // CSS translateZ for lifted piece
 
@@ -71,6 +72,7 @@ export default function App() {
   const simDoneRef = useRef(false);
   const liftAmountRef = useRef(10);
   const kerfRef = useRef(2);
+  const thicknessRef = useRef(10);
 
   // Cut-order UI refs
   const hoveredIndicesRef = useRef(null); // entity indices of the contour currently hovered in the sidebar list
@@ -82,6 +84,7 @@ export default function App() {
   useEffect(() => { simActiveRef.current = simActive; }, [simActive]);
   useEffect(() => { simSpeedRef.current = simSpeed; }, [simSpeed]);
   useEffect(() => { kerfRef.current = kerf; }, [kerf]);
+  useEffect(() => { thicknessRef.current = thickness; }, [thickness]);
 
   // ── Canvas resize ─────────────────────────────────────────────────────────
 
@@ -210,6 +213,7 @@ export default function App() {
       bbox,
       tilt: tiltRef.current,
       highlightIndices: hoveredIndicesRef.current,
+      thickness: thicknessRef.current,
     });
 
     // Sync both canvas CSS transforms in the same frame to prevent jitter
@@ -235,6 +239,8 @@ export default function App() {
           raiseProgress: rp,
           kerf: kerfRef.current,
           bbox,
+          tilt: tiltRef.current,
+          thickness: thicknessRef.current,
         });
       } else {
         liftCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -717,7 +723,6 @@ export default function App() {
                     );
                   })}
                 </div>
-                <div className="export-note" style={{marginTop: 6}}>Drag rows or use the arrows to choose which contour cuts first — e.g. holes before the outline.</div>
               </div>
             )}
 
@@ -778,6 +783,19 @@ export default function App() {
                   className="kerf-slider"
                 />
                 <span className="kerf-value">{kerf}px</span>
+              </div>
+              <div className="kerf-control">
+                <span className="speed-label">Thickness:</span>
+                <input
+                  type="range"
+                  min="2"
+                  max="30"
+                  step="1"
+                  value={thickness}
+                  onChange={(e) => setThickness(parseFloat(e.target.value))}
+                  className="kerf-slider"
+                />
+                <span className="kerf-value">{thickness}px</span>
               </div>
             </div>
           </>

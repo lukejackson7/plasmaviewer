@@ -834,15 +834,6 @@ export default function App() {
 
             <div className="sidebar-section">
               <h2>Simulation</h2>
-              {!simActive ? (
-                <button className="sim-btn" onClick={handleSimulate}>
-                   Simulate Cut
-                </button>
-              ) : (
-                <button className="sim-btn stop" onClick={handleStopSim}>
-                  ⏹ Stop
-                </button>
-              )}
               <div className="kerf-control">
                 <span className="speed-label">Speed:</span>
                 <input
@@ -922,6 +913,19 @@ export default function App() {
             <div className="sim-hud-bar-bg">
               <div className="sim-hud-bar" ref={barRef} style={{ width: `${simHud.progress * 100}%`, backgroundColor: simHud.color }} />
             </div>
+          </div>
+        )}
+        {fileName && (
+          <div className="sim-float-controls">
+            {!simActive ? (
+              <button className="sim-btn" onClick={handleSimulate}>
+                ▶ Simulate Cut
+              </button>
+            ) : (
+              <button className="sim-btn stop" onClick={handleStopSim}>
+                ⏹ Stop
+              </button>
+            )}
           </div>
         )}
         {!fileName && (

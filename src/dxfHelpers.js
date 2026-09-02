@@ -328,11 +328,19 @@ export function getStartPoint(geometry) {
 
 const GAP_THRESHOLD = 0.5; // units — if gap > this, it's a rapid move
 
-export function buildSimulationPath(geometry) {
+/**
+ * @param {Array} geometry
+ * @param {Array<number>} [order] - optional list of entity indices (into `geometry`)
+ *   specifying the desired cut sequence. Defaults to the natural array order.
+ *   Lets callers implement CAM-style cut ordering (e.g. inside contours first).
+ */
+export function buildSimulationPath(geometry, order) {
   const path = [];
+  const sequence = (order && order.length) ? order : geometry.map((_, i) => i);
 
-  for (let gIdx = 0; gIdx < geometry.length; gIdx++) {
+  for (const gIdx of sequence) {
     const g = geometry[gIdx];
+    if (!g) continue;
     const pts = entityToPoints(g);
     if (pts.length === 0) continue;
 

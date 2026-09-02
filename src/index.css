@@ -262,6 +262,105 @@ html, body, #root {
   border-top: 1px solid #1e1e3a;
 }
 
+/* ── Cut Order (CAM contour sequencing) ─────────────────────────────────── */
+
+.cut-order-presets {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.preset-btn {
+  flex: 1;
+  padding: 6px 4px;
+  background: #1a1a3a;
+  border: 1px solid #2a2a4a;
+  border-radius: 4px;
+  color: #8a8aaa;
+  font-size: 10.5px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.preset-btn:hover {
+  border-color: #00d4ff;
+  color: #00d4ff;
+}
+
+.cut-order-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.cut-order-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: #181832;
+  border: 1px solid #2a2a4a;
+  border-left: 3px solid #4a4a6a;
+  border-radius: 4px;
+  cursor: grab;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.cut-order-row:hover {
+  background: #20204a;
+  border-left-color: #ffcc00;
+}
+
+.cut-order-row:active { cursor: grabbing; }
+
+.cut-order-row.inside { border-left-color: #00d4ff; }
+.cut-order-row.outside { border-left-color: #00cc66; }
+.cut-order-row.open { border-left-color: #ff6b6b; }
+
+.cut-order-index {
+  font-family: 'Consolas', monospace;
+  font-size: 11px;
+  color: #6a6a8a;
+  min-width: 16px;
+  text-align: center;
+}
+
+.cut-order-type {
+  flex: 1;
+  font-size: 12px;
+  color: #c0c0d0;
+}
+
+.cut-order-controls {
+  display: flex;
+  gap: 3px;
+}
+
+.cut-order-controls button {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: #1e1e4a;
+  border: 1px solid #3a3a6a;
+  border-radius: 3px;
+  color: #8a8aaa;
+  font-size: 9px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cut-order-controls button:hover:not(:disabled) {
+  border-color: #00d4ff;
+  color: #00d4ff;
+}
+
+.cut-order-controls button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
 .export-btn {
   margin-top: 10px;
   background: #0a2a1a !important;

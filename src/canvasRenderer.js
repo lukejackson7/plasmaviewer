@@ -208,6 +208,21 @@ export function renderScene(ctx, width, height, geometry, transform, options = {
     ctx.fillText('START', sp.x + 8 / zoom, -sp.y - 8 / zoom);
   }
 
+  // ── Highlight a selected cut-order contour ────────────────────────────────
+
+  if (options.highlightIndices && options.highlightIndices.length) {
+    ctx.save();
+    ctx.strokeStyle = '#ffcc00';
+    ctx.lineWidth = Math.max(lw * 2.5, 3 / zoom);
+    ctx.shadowColor = '#ffcc00';
+    ctx.shadowBlur = 10 / zoom;
+    for (const idx of options.highlightIndices) {
+      const g = geometry[idx];
+      if (g) drawEntity(ctx, g);
+    }
+    ctx.restore();
+  }
+
   ctx.restore();
 }
 

@@ -326,6 +326,45 @@ function pointInPolygon(point, polygon) {
   return inside;
 }
 
+// ─── Cut groups (for CAM-style cut-order selection) ─────────────────────────────
+//
+// Groups geometry into cuttable "contours" — closed loops (classified inside/outside)
+// plus any open chains — so the user can pick which contour is cut first
+// (e.g. inside holes before the outside profile).
+
+export function computeCutGroups(geometry) {
+  const chains = buildChains(geometry);
+
+  const groups = chains.map((chain) => {
+    if (chain.closed) {
+      const polygon = chainToPolygon(chain, geometry);
+      const area = signedArea(polygon);
+      return { indices: [...chain.indices], closed: true, polygon, area, type: 'outside' };
+    }
+    return { indices: [...chain.indices], closed: false, polygon: [], area: 0, type: 'open' };
+  });
+
+  // Classify inside/outside among closed groups using containment (same algorithm as classifyLoops)
+  const closedGroups = groups.filter(g => g.closed);
+  closedGroups.sort((a, b) => Math.abs(b.area) - Math.abs(a.area));
+  for (let i = 0; i < closedGroups.length; i++) {
+    let containedIn = 0;
+    for (let j = 0; j < closedGroups.length; j++) {
+      if (i === j) continue;
+      if (Math.abs(closedGroups[j].area) <= Math.abs(closedGroups[i].area)) continue;
+      if (closedGroups[i].polygon.length > 0 && pointInPolygon(closedGroups[i].polygon[0], closedGroups[j].polygon)) {
+        containedIn++;
+      }
+    }
+    closedGroups[i].type = containedIn % 2 === 0 ? 'outside' : 'inside';
+  }
+
+  // Sort by natural file order (lowest entity index in each group), then assign
+  // sequential ids so `id` doubles as the "original file order" position.
+  groups.sort((a, b) => Math.min(...a.indices) - Math.min(...b.indices));
+  return groups.map((g, i) => ({ id: i, ...g }));
+}
+
 // ─── Main entry point ───────────────────────────────────────────────────────────
 
 export function runPlasmaChecks(geometry) {

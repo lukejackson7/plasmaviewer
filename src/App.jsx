@@ -12,7 +12,7 @@ import {
   isRapidAt,
 } from './dxfHelpers.js';
 import { renderScene, renderLiftedPiece, fitToScreen } from './canvasRenderer.js';
-import { runPlasmaChecks } from './plasmaChecks.js';
+import { runPlasmaChecks, computeCutGroups } from './plasmaChecks.js';
 import { exportCleanedDxf } from './dxfExporter.js';
 
 function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
@@ -33,6 +33,10 @@ export default function App() {
   const [loops, setLoops] = useState([]);
   const [error, setError] = useState(null);
   const [transform, setTransform] = useState({ panX: 0, panY: 0, zoom: 1 });
+
+  // CAM-style cut order — contours (loops) the user can reorder/select cut priority for
+  const [cutGroups, setCutGroups] = useState([]); // [{ id, indices, closed, type: 'inside'|'outside'|'open' }]
+  const [cutOrder, setCutOrder] = useState([]);   // array of group ids, in cut sequence
 
   // Simulation state
   const [simActive, setSimActive] = useState(false);
@@ -67,6 +71,10 @@ export default function App() {
   const simDoneRef = useRef(false);
   const liftAmountRef = useRef(10);
   const kerfRef = useRef(2);
+
+  // Cut-order UI refs
+  const hoveredIndicesRef = useRef(null); // entity indices of the contour currently hovered in the sidebar list
+  const dragCutIdRef = useRef(null);      // group id currently being drag-reordered
 
   // Keep refs in sync
   useEffect(() => { transformRef.current = transform; }, [transform]);
@@ -201,6 +209,7 @@ export default function App() {
       loops,
       bbox,
       tilt: tiltRef.current,
+      highlightIndices: hoveredIndicesRef.current,
     });
 
     // Sync both canvas CSS transforms in the same frame to prevent jitter
@@ -289,7 +298,14 @@ export default function App() {
         const cl = computeCutLength(geo);
         const nodes = collectNodes(geo);
         const sp = getStartPoint(geo);
-        const simPath = buildSimulationPath(geo);
+
+        const groups = computeCutGroups(geo);
+        const order = groups.map(g => g.id); // default cut order = natural file order
+        const orderedIndices = order.flatMap(id => {
+          const g = groups.find(cg => cg.id === id);
+          return g ? g.indices : [];
+        });
+        const simPath = buildSimulationPath(geo, orderedIndices);
 
         setFileName(file.name);
         setGeometry(geo);
@@ -301,6 +317,8 @@ export default function App() {
         geometryRef.current = geo;
         simPathRef.current = simPath;
         liftAmountRef.current = Math.max(bb.height, bb.width) * 0.15;
+        setCutGroups(groups);
+        setCutOrder(order);
 
         const checks = runPlasmaChecks(geo);
         setIssues(checks.issues);
@@ -343,14 +361,68 @@ export default function App() {
     simDoneRef.current = false;
   }, []);
 
+  // ── Cut order (CAM-style contour sequencing) ──────────────────────────────
+  // Rebuild the simulation path whenever the user reorders contours, so
+  // "Simulate Cut" always follows the chosen sequence (e.g. holes before outline).
+  useEffect(() => {
+    if (geometry.length === 0 || cutGroups.length === 0) return;
+    const orderedIndices = cutOrder.flatMap(id => {
+      const g = cutGroups.find(cg => cg.id === id);
+      return g ? g.indices : [];
+    });
+    simPathRef.current = buildSimulationPath(geometry, orderedIndices);
+    if (simActiveRef.current) handleStopSim();
+  }, [cutOrder, cutGroups, geometry, handleStopSim]);
+
+  const moveCutGroup = useCallback((id, delta) => {
+    setCutOrder(prev => {
+      const idx = prev.indexOf(id);
+      const newIdx = idx + delta;
+      if (idx === -1 || newIdx < 0 || newIdx >= prev.length) return prev;
+      const arr = [...prev];
+      [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
+      return arr;
+    });
+  }, []);
+
+  const applyCutOrderPreset = useCallback((preset) => {
+    setCutOrder(() => {
+      const rankInside = t => (t === 'inside' ? 0 : t === 'outside' ? 1 : 2);
+      const rankOutside = t => (t === 'outside' ? 0 : t === 'inside' ? 1 : 2);
+      let sorted;
+      if (preset === 'inside-first') {
+        sorted = [...cutGroups].sort((a, b) => rankInside(a.type) - rankInside(b.type) || a.id - b.id);
+      } else if (preset === 'outside-first') {
+        sorted = [...cutGroups].sort((a, b) => rankOutside(a.type) - rankOutside(b.type) || a.id - b.id);
+      } else {
+        sorted = [...cutGroups].sort((a, b) => a.id - b.id);
+      }
+      return sorted.map(g => g.id);
+    });
+  }, [cutGroups]);
+
+  const onCutRowDragStart = useCallback((id) => { dragCutIdRef.current = id; }, []);
+  const onCutRowDragOver = useCallback((e, overId) => {
+    e.preventDefault();
+    const dragId = dragCutIdRef.current;
+    if (dragId == null || dragId === overId) return;
+    setCutOrder(prev => {
+      const from = prev.indexOf(dragId);
+      const to = prev.indexOf(overId);
+      if (from === -1 || to === -1 || from === to) return prev;
+      const arr = [...prev];
+      arr.splice(from, 1);
+      arr.splice(to, 0, dragId);
+      return arr;
+    });
+  }, []);
+  const onCutRowDragEnd = useCallback(() => { dragCutIdRef.current = null; }, []);
+
   // ── Mouse handlers ────────────────────────────────────────────────────────
 
   const onMouseDown = useCallback((e) => {
     if (e.button === 0) {
-      isPanning.current = true;
-      lastMouse.current = { x: e.clientX, y: e.clientY };
-      e.preventDefault();
-    } else if (e.button === 1) {
+      // Left-click drag — orbit/tilt the 3D view (works with just a trackpad + left button)
       if (e.detail === 2) {
         tiltRef.current = { rotX: 0, rotY: 0 };
         if (canvasRef.current) canvasRef.current.style.transform = 'rotateX(0deg) rotateY(0deg)';
@@ -359,6 +431,11 @@ export default function App() {
         isTilting.current = true;
         lastMouse.current = { x: e.clientX, y: e.clientY };
       }
+      e.preventDefault();
+    } else if (e.button === 1 || e.button === 2) {
+      // Middle or right-click drag — pan
+      isPanning.current = true;
+      lastMouse.current = { x: e.clientX, y: e.clientY };
       e.preventDefault();
     }
   }, []);
@@ -604,6 +681,46 @@ export default function App() {
               </div>
             </div>
 
+            {cutGroups.length > 1 && (
+              <div className="sidebar-section">
+                <h2>Cut Order</h2>
+                <div className="cut-order-presets">
+                  <button className="preset-btn" onClick={() => applyCutOrderPreset('inside-first')}>Holes First</button>
+                  <button className="preset-btn" onClick={() => applyCutOrderPreset('outside-first')}>Outside First</button>
+                  <button className="preset-btn" onClick={() => applyCutOrderPreset('file-order')}>File Order</button>
+                </div>
+                <div className="cut-order-list">
+                  {cutOrder.map((id, i) => {
+                    const g = cutGroups.find(cg => cg.id === id);
+                    if (!g) return null;
+                    const label = g.type === 'inside' ? 'Hole' : g.type === 'outside' ? 'Outer' : 'Open';
+                    const icon = g.type === 'inside' ? '◎' : g.type === 'outside' ? '⬤' : '⚠';
+                    return (
+                      <div
+                        key={id}
+                        className={`cut-order-row ${g.type}`}
+                        draggable
+                        onDragStart={() => onCutRowDragStart(id)}
+                        onDragOver={(e) => onCutRowDragOver(e, id)}
+                        onDragEnd={onCutRowDragEnd}
+                        onMouseEnter={() => { hoveredIndicesRef.current = g.indices; }}
+                        onMouseLeave={() => { hoveredIndicesRef.current = null; }}
+                        title="Drag to reorder — hover to highlight on the sheet"
+                      >
+                        <span className="cut-order-index">{i + 1}</span>
+                        <span className="cut-order-type">{icon} {label}</span>
+                        <span className="cut-order-controls">
+                          <button disabled={i === 0} onClick={() => moveCutGroup(id, -1)} aria-label="Move up">▲</button>
+                          <button disabled={i === cutOrder.length - 1} onClick={() => moveCutGroup(id, 1)} aria-label="Move down">▼</button>
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="export-note" style={{marginTop: 6}}>Drag rows or use the arrows to choose which contour cuts first — e.g. holes before the outline.</div>
+              </div>
+            )}
+
             <div className="sidebar-section">
               <button className="action-btn" onClick={handleFitToScreen}>
                 ⊞ Fit to Screen
@@ -667,7 +784,7 @@ export default function App() {
         )}
 
         <div className="sidebar-footer">
-          <small>Scroll to zoom · Drag to pan · Middle-click to orbit</small>
+          <small>Scroll to zoom · Left-drag to orbit · Right-drag to pan</small>
         </div>
       </aside>
 

@@ -40,7 +40,7 @@ export default function App() {
 
   // Units + scaling
   const [displayUnit, setDisplayUnit] = useState('in'); // 'in' | 'mm' — assumes native DXF units are mm
-  const [scaleFactor, setScaleFactor] = useState(1);     // pending scale multiplier for "Scale & Save"
+  const [scaleInput, setScaleInput] = useState('1');     // raw text of the pending scale multiplier (kept as a string so partial decimals like "0.5" can be typed)
 
   // Simulation state
   const [simActive, setSimActive] = useState(false);
@@ -593,8 +593,8 @@ export default function App() {
 
   const handleScaleAndSave = useCallback(() => {
     if (!geometry.length || !bbox || !fileName) return;
-    const factor = scaleFactor;
-    if (!factor || factor <= 0) return;
+    const factor = parseFloat(scaleInput);
+    if (!factor || factor <= 0 || Number.isNaN(factor)) return;
 
     const scaledGeo = scaleGeometry(geometry, factor);
     const bb = computeBoundingBox(scaledGeo);
@@ -640,8 +640,8 @@ export default function App() {
     a.click();
     URL.revokeObjectURL(url);
 
-    setScaleFactor(1);
-  }, [geometry, bbox, fileName, scaleFactor]);
+    setScaleInput('1');
+  }, [geometry, bbox, fileName, scaleInput]);
 
   // ── Drag and drop ─────────────────────────────────────────────────────────
 
@@ -734,8 +734,9 @@ export default function App() {
                   type="number"
                   step="0.01"
                   min="0.001"
-                  value={scaleFactor}
-                  onChange={(e) => setScaleFactor(parseFloat(e.target.value))}
+                  value={scaleInput}
+                  onChange={(e) => setScaleInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleScaleAndSave(); }}
                   className="scale-input"
                 />
               </div>

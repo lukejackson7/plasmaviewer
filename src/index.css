@@ -198,6 +198,38 @@ html, body, #root {
   font-weight: 600;
 }
 
+/* ── Unit toggle ─────────────────────────────────────────────────────────── */
+
+.unit-toggle {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.unit-toggle .speed-btn {
+  flex: 1;
+  text-align: center;
+}
+
+/* ── Scale input ─────────────────────────────────────────────────────────── */
+
+.scale-input {
+  flex: 1;
+  background: #12122a;
+  border: 1px solid #2a2a4a;
+  border-radius: 4px;
+  color: #e0e0e0;
+  font-size: 12px;
+  font-family: 'Consolas', monospace;
+  padding: 4px 6px;
+  width: 0; /* let flex control width */
+}
+
+.scale-input:focus {
+  outline: none;
+  border-color: #00d4ff;
+}
+
 /* ── Kerf control ────────────────────────────────────────────────────────── */
 
 .kerf-control {

@@ -57,6 +57,41 @@ function snapNearestEndpoint(g, targets, snapTo) {
 
 function near(a, b) { return Math.abs(a.x - b.x) < 0.2 && Math.abs(a.y - b.y) < 0.2; }
 
+// ─── Scaling ─────────────────────────────────────────────────────────────────
+
+/** Uniformly scale all geometry coordinates (and radii) by `factor`. Bulge values
+ *  are dimensionless (ratio-based) so they're left untouched. */
+export function scaleGeometry(geometry, factor) {
+  if (!factor || factor === 1) return geometry;
+  return geometry.map(g => scaleEntity(g, factor));
+}
+
+function scaleEntity(g, f) {
+  switch (g.type) {
+    case 'line':
+    case 'spline':
+      return { ...g, points: g.points.map(p => ({ ...p, x: p.x * f, y: p.y * f })) };
+    case 'polyline':
+      return { ...g, points: g.points.map(p => ({ ...p, x: p.x * f, y: p.y * f })) };
+    case 'circle':
+      return { ...g, cx: g.cx * f, cy: g.cy * f, r: g.r * f };
+    case 'arc':
+      return { ...g, cx: g.cx * f, cy: g.cy * f, r: g.r * f };
+    default:
+      return g;
+  }
+}
+
+/** Export geometry as-is (no cleaning/scaling) to a DXF string. */
+export function exportDxf(geometry) {
+  return buildDxfString(geometry);
+}
+
+/** Scale geometry by `factor` and export the result as a DXF string. */
+export function exportScaledDxf(geometry, factor) {
+  return buildDxfString(scaleGeometry(geometry, factor));
+}
+
 // ─── DXF R12 writer ─────────────────────────────────────────────────────────────
 
 function buildDxfString(geometry) {

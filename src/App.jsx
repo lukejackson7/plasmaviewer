@@ -13,7 +13,7 @@ import {
 } from './dxfHelpers.js';
 import { renderScene, renderLiftedPiece, fitToScreen } from './canvasRenderer.js';
 import { runPlasmaChecks, computeCutGroups } from './plasmaChecks.js';
-import { exportCleanedDxf } from './dxfExporter.js';
+import { exportCleanedDxf, scaleGeometry, exportDxf } from './dxfExporter.js';
 
 function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
@@ -37,6 +37,10 @@ export default function App() {
   // CAM-style cut order — contours (loops) the user can reorder/select cut priority for
   const [cutGroups, setCutGroups] = useState([]); // [{ id, indices, closed, type: 'inside'|'outside'|'open' }]
   const [cutOrder, setCutOrder] = useState([]);   // array of group ids, in cut sequence
+
+  // Units + scaling
+  const [displayUnit, setDisplayUnit] = useState('in'); // 'in' | 'mm' — assumes native DXF units are mm
+  const [scaleFactor, setScaleFactor] = useState(1);     // pending scale multiplier for "Scale & Save"
 
   // Simulation state
   const [simActive, setSimActive] = useState(false);
@@ -583,6 +587,62 @@ export default function App() {
     if (liftCanvasRef.current) liftCanvasRef.current.style.transform = 'rotateX(0deg) rotateY(0deg) translateZ(0px)';
   }, [bbox]);
 
+  // ── Scale & save ──────────────────────────────────────────────────────────
+  // Rescales the loaded drawing in place (metrics, health checks, cut order,
+  // simulation path all update) and downloads the result as a new DXF file.
+
+  const handleScaleAndSave = useCallback(() => {
+    if (!geometry.length || !bbox || !fileName) return;
+    const factor = scaleFactor;
+    if (!factor || factor <= 0) return;
+
+    const scaledGeo = scaleGeometry(geometry, factor);
+    const bb = computeBoundingBox(scaledGeo);
+    const cl = computeCutLength(scaledGeo);
+    const nodes = collectNodes(scaledGeo);
+    const sp = getStartPoint(scaledGeo);
+    const checks = runPlasmaChecks(scaledGeo);
+    const groups = computeCutGroups(scaledGeo);
+
+    setGeometry(scaledGeo);
+    setBbox(bb);
+    setCutLength(cl);
+    nodesRef.current = nodes;
+    startPointRef.current = sp;
+    geometryRef.current = scaledGeo;
+    liftAmountRef.current = Math.max(bb.height, bb.width) * 0.15;
+    setIssues(checks.issues);
+    setLoops(checks.loops);
+    setCutGroups(groups);
+    setCutOrder(prev => {
+      const validIds = new Set(groups.map(g => g.id));
+      const kept = prev.filter(id => validIds.has(id));
+      const missing = groups.map(g => g.id).filter(id => !kept.includes(id));
+      return [...kept, ...missing];
+    });
+
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const dpr = window.devicePixelRatio || 1;
+      const t = fitToScreen(bb, canvas.width / dpr, canvas.height / dpr);
+      setTransform(t);
+      transformRef.current = t;
+    }
+
+    // Download the scaled DXF
+    const dxfStr = exportDxf(scaledGeo);
+    const blob = new Blob([dxfStr], { type: 'application/dxf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const base = fileName.replace(/\.dxf$/i, '');
+    a.download = `${base}_scaled_${factor}x.dxf`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    setScaleFactor(1);
+  }, [geometry, bbox, fileName, scaleFactor]);
+
   // ── Drag and drop ─────────────────────────────────────────────────────────
 
   const onDragOver = useCallback((e) => { e.preventDefault(); e.stopPropagation(); }, []);
@@ -594,9 +654,10 @@ export default function App() {
   }, [handleFile]);
 
   const fmt = (n) => {
-    if (n >= 1000) return n.toFixed(1);
-    if (n >= 1) return n.toFixed(2);
-    return n.toFixed(4);
+    const v = displayUnit === 'in' ? n / 25.4 : n;
+    if (v >= 1000) return v.toFixed(1);
+    if (v >= 1) return v.toFixed(2);
+    return v.toFixed(4);
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -643,22 +704,45 @@ export default function App() {
 
             <div className="sidebar-section">
               <h2>Metrics</h2>
+              <div className="unit-toggle">
+                <button className={`speed-btn ${displayUnit === 'in' ? 'active' : ''}`} onClick={() => setDisplayUnit('in')}>in</button>
+                <button className={`speed-btn ${displayUnit === 'mm' ? 'active' : ''}`} onClick={() => setDisplayUnit('mm')}>mm</button>
+              </div>
               <div className="info-row">
                 <span>Cut Length:</span>
-                <span>{fmt(cutLength)} units</span>
+                <span>{fmt(cutLength)} {displayUnit}</span>
               </div>
               {bbox && (
                 <>
                   <div className="info-row">
                     <span>Width:</span>
-                    <span>{fmt(bbox.width)} units</span>
+                    <span>{fmt(bbox.width)} {displayUnit}</span>
                   </div>
                   <div className="info-row">
                     <span>Height:</span>
-                    <span>{fmt(bbox.height)} units</span>
+                    <span>{fmt(bbox.height)} {displayUnit}</span>
                   </div>
                 </>
               )}
+            </div>
+
+            <div className="sidebar-section">
+              <h2>Scale &amp; Save</h2>
+              <div className="kerf-control">
+                <span className="speed-label">Scale ×</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.001"
+                  value={scaleFactor}
+                  onChange={(e) => setScaleFactor(parseFloat(e.target.value))}
+                  className="scale-input"
+                />
+              </div>
+              <button className="action-btn export-btn" onClick={handleScaleAndSave}>
+                💾 Scale &amp; Save DXF
+              </button>
+              <div className="export-note" style={{marginTop: 6}}>Rescales the drawing (metrics, checks, and cut order update too) and downloads the result as a new DXF file.</div>
             </div>
 
             <div className="sidebar-section">
